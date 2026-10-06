@@ -79,8 +79,16 @@ sur-apprentissage, etc.). Ces fichiers servent de base à la rédaction du rappo
 ├── instructions/          # consignes du BE et description Kaggle (ne pas modifier)
 ├── data/                  # données Kaggle (non versionnées, cf. .gitignore)
 ├── src/                   # code, un fichier par étape
+│   ├── config.py          # chemins et constantes partagés
+│   ├── traces.py          # lecture des jetons (marqueurs tXX, décomposition des actions)
+│   ├── features.py        # construction des features (réutilisé par les étapes 5 et 7)
+│   └── figures.py         # style graphique commun
+├── outputs/               # sorties régénérables : pickles, figures, tableaux (non versionnées)
 └── explications/          # un fichier Markdown d'explication par étape
 ```
+
+`config.py` et `traces.py` sont des modules utilitaires partagés, sans étape propre : leurs choix
+sont expliqués dans le fichier d'explication de la première étape qui les utilise.
 
 - Ne jamais versionner les données (`data/`, `*.csv`) : elles sont exclues par le `.gitignore`.
 - Ne pas modifier le contenu de `instructions/` : ce sont les documents fournis par les enseignants.
