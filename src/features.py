@@ -27,6 +27,7 @@ AUCUN = "aucun"  # valeur des colonnes catégorielles quand la session n'a pas d
 # Action comptée seule dans le premier essai : l'usage des raccourcis clavier
 # est une habitude personnelle, indépendante du métier de l'utilisateur.
 ACTION_TEST_SIMPLE = "Raccourci"
+COLONNE_COMPTAGE_SIMPLE = f"nb_{ACTION_TEST_SIMPLE.lower()}"
 
 COLONNES_RYTHME = [
     "log_nb_actions",
@@ -103,7 +104,7 @@ def features_contenu(actions: list) -> dict:
     chaines = Counter(action.chaine for action in actions if action.chaine)
 
     features = {
-        f"nb_{ACTION_TEST_SIMPLE.lower()}": libelles[ACTION_TEST_SIMPLE],
+        COLONNE_COMPTAGE_SIMPLE: libelles[ACTION_TEST_SIMPLE],
         "nb_ecrans_distincts": len(ecrans),
         "nb_conf_distinctes": len(confs),
         "nb_chaines_distinctes": len(chaines),
@@ -161,6 +162,14 @@ def calculer_features_simples(
 def colonnes_parts_actions(features: pd.DataFrame) -> list[str]:
     """Renvoie les colonnes « part_action_<libellé> » (répartition des libellés)."""
     return [colonne for colonne in features if colonne.startswith(PREFIXE_PART_ACTION)]
+
+
+def colonnes_numeriques(features: pd.DataFrame) -> list[str]:
+    """Renvoie toutes les features simples numériques (essai E8 de l'étape 4)."""
+    return (
+        [COLONNE_COMPTAGE_SIMPLE] + COLONNES_RYTHME + colonnes_parts_actions(features)
+        + COLONNES_CONTENU
+    )
 
 
 def jetons_session(actions: list, familles=FAMILLES_JETONS_COMPLETES) -> list[str]:

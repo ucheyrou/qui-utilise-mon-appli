@@ -15,7 +15,6 @@ Usage : python src/04_features.py (après src/03_pretraitement.py)
 import time
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import f_classif
@@ -34,26 +33,21 @@ from config import (
 )
 from features import (
     ACTION_TEST_SIMPLE,
+    COLONNE_COMPTAGE_SIMPLE,
     COLONNES_CATEGORIELLES,
     COLONNES_CONTENU,
     COLONNES_RYTHME,
     FAMILLES_JETONS_COMPLETES,
     PREFIXE_PART_ACTION,
     calculer_features_simples,
+    colonnes_numeriques,
     colonnes_parts_actions,
     construire_preprocesseur,
 )
-from figures import (
-    COULEUR_PRINCIPALE,
-    COULEUR_SECONDAIRE,
-    ENCRE_SECONDAIRE,
-    configurer_style,
-    sauvegarder_figure,
-)
+from figures import COULEUR_PRINCIPALE, configurer_style, sauvegarder_figure, tracer_scores
 
 NB_ARBRES = 300
 NB_FEATURES_CLASSEMENT = 20
-COLONNE_COMPTAGE_SIMPLE = f"nb_{ACTION_TEST_SIMPLE.lower()}"
 
 
 def definir_essais(colonnes_parts: list[str]) -> list[dict]:
@@ -195,31 +189,13 @@ def tracer_classement(classement: pd.Series) -> None:
 
 def tracer_carnet(carnet: pd.DataFrame) -> None:
     """Barres du F1 macro et de l'accuracy de chaque essai (moyenne ± écart-type)."""
-    positions = np.arange(len(carnet))
-    hauteur = 0.38
-    figure, axe = plt.subplots(figsize=(9, 5))
-    for decalage, colonne, couleur, nom in [
-        (-hauteur / 2, "f1_macro", COULEUR_PRINCIPALE, "F1 macro"),
-        (hauteur / 2, "accuracy", COULEUR_SECONDAIRE, "Accuracy"),
-    ]:
-        barres = axe.barh(
-            positions + decalage,
-            carnet[colonne],
-            height=hauteur - 0.04,
-            xerr=carnet[f"{colonne}_ecart_type"],
-            color=couleur,
-            error_kw={"ecolor": ENCRE_SECONDAIRE, "elinewidth": 1, "capsize": 2},
-            label=nom,
-        )
-        axe.bar_label(barres, fmt="%.2f", padding=8, fontsize=7, color=ENCRE_SECONDAIRE)
-    axe.set_yticks(positions, carnet["code"] + " — " + carnet["description"])
-    axe.invert_yaxis()
-    axe.set_xlim(0, 1)
-    axe.set_xlabel(f"Score en validation croisée stratifiée ({N_SPLITS} plis)")
-    axe.set_title("Carnet d'essais : ajout progressif des features (forêt aléatoire)")
-    axe.legend(loc="upper right")
-    axe.grid(axis="y", visible=False)
-    sauvegarder_figure(figure, "fig09_carnet_essais_features")
+    tracer_scores(
+        carnet,
+        carnet["code"] + " — " + carnet["description"],
+        titre="Carnet d'essais : ajout progressif des features (forêt aléatoire)",
+        legende_x=f"Score en validation croisée stratifiée ({N_SPLITS} plis)",
+        nom="fig09_carnet_essais_features",
+    )
 
 
 def main() -> None:
@@ -240,9 +216,7 @@ def main() -> None:
         f"(train {features_train.shape}, test {features_test.shape})"
     )
 
-    colonnes_numeriques = [COLONNE_COMPTAGE_SIMPLE] + COLONNES_RYTHME + colonnes_parts \
-        + COLONNES_CONTENU
-    classement = classer_features_simples(features_train, colonnes_numeriques)
+    classement = classer_features_simples(features_train, colonnes_numeriques(features_train))
     classement.rename("score_f").rename_axis("feature").reset_index().to_csv(
         DOSSIER_TABLEAUX / "classement_features_anova.csv", encoding=ENCODAGE, index=False
     )

@@ -82,7 +82,8 @@ sur-apprentissage, etc.). Ces fichiers servent de base à la rédaction du rappo
 │   ├── config.py          # chemins et constantes partagés
 │   ├── traces.py          # lecture des jetons (marqueurs tXX, décomposition des actions)
 │   ├── features.py        # construction des features (réutilisé par les étapes 5 et 7)
-│   └── figures.py         # style graphique commun
+│   ├── modeles.py         # catalogue des modèles, pipeline, contrainte navigateur
+│   └── figures.py         # style graphique et tracés communs
 ├── outputs/               # sorties régénérables : pickles, figures, tableaux (non versionnées)
 └── explications/          # un fichier Markdown d'explication par étape
 ```

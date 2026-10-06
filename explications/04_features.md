@@ -178,8 +178,10 @@ Cette étape s'est construite par essais et erreurs, à garder pour la discussio
 - **Une seule graine et un seul découpage.** Des écarts de l'ordre de 0,01 (E7 contre E8)
   ne sont pas significatifs. Une validation croisée répétée avec plusieurs graines
   permettrait de trancher.
-- **Le carnet n'utilise qu'un modèle** (forêt aléatoire). Un modèle linéaire exploite souvent
-  mieux un TF-IDF creux : à vérifier à l'étape 5.
+- **Le carnet n'utilise qu'un modèle** (forêt aléatoire). On s'attendait à ce qu'un modèle
+  linéaire exploite mieux un TF-IDF creux. L'étape 5 a démenti cette intuition : sur les
+  features de E8, la régression logistique (0,855) et le SVM linéaire (0,890) restent sous
+  la forêt (0,939).
 - **Le classement ANOVA est univarié.** Il ne voit ni les redondances entre features ni
   leurs interactions. L'importance par permutation, à l'étape 6, complétera cette analyse.
 - **Pistes de features** :
