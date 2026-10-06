@@ -1,0 +1,17 @@
+# Données Kaggle (non redistribuables, train.csv > 50 Mo)
+data/
+*.csv
+!requirements*.txt
+
+# Python / Jupyter
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+
+# macOS / IDE
+.DS_Store
+.vscode/
+.idea/
