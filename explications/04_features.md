@@ -151,6 +151,7 @@ moyennes sur les plis ± l'écart-type.
 | E6 | Navigateur + TF-IDF des écrans seuls | 304 | 0,545 ± 0,008 | 0,644 |
 | E7 | Navigateur + TF-IDF complet | 1 557 | 0,907 ± 0,008 | 0,930 |
 | E8 | Features simples (E5) + TF-IDF complet | 1 794 | **0,913** ± 0,010 | 0,935 |
+| E9 | E7 + TF-IDF des séquences d'actions complètes | 46 693 | 0,897 ± 0,007 | 0,925 |
 
 Ce qu'on en retient :
 
@@ -180,6 +181,12 @@ Ce qu'on en retient :
   l'écart-type entre plis (± 0,01). Le gain n'est donc pas significatif. On garde quand
   même cette combinaison comme point de départ de l'étape 5 : les features simples sont
   peu nombreuses, interprétables, et pourraient aider d'autres modèles.
+- **E9 : les séquences d'actions complètes font *baisser* la forêt** (0,897 contre 0,907
+  pour E7). Avec 46 000 colonnes, chaque nœud d'un arbre ne regarde qu'un tirage de
+  √p ≈ 200 colonnes et rate la plupart des jetons utiles. Ce n'est pas la fin de l'histoire :
+  avec un **SVM linéaire**, la même représentation donne le meilleur modèle du projet
+  (0,967, voir l'étape 5). Le carnet est évalué avec une forêt pour comparer les familles de
+  features entre elles, mais **la meilleure représentation dépend du modèle**.
 - **F1 macro systématiquement inférieur à l'accuracy** : les utilisateurs qui ont peu de
   sessions sont moins bien reconnus. C'est exactement ce que le F1 macro est censé révéler.
 
