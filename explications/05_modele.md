@@ -25,7 +25,7 @@ entraîne le modèle retenu sur tout le jeu d'entraînement.
 | Sortie | `outputs/tableaux/comparaison_modeles.csv` | Une ligne par modèle : meilleurs hyperparamètres, F1 macro, F1 pondéré, accuracy (moyenne ± écart-type sur les plis), durée |
 | Sortie | `outputs/tableaux/grilles_hyperparametres.csv` | Score de chaque combinaison d'hyperparamètres testée |
 | Sortie | `outputs/scores_hors_pli.pkl` | Scores hors pli de chaque modèle (matrices 3 279 × 247), utilisés par l'étape 6 |
-| Sortie | `outputs/modele_final.joblib` | Modèle retenu, entraîné sur tout le train (39 Mo compressé) |
+| Sortie | `outputs/modele_final.joblib` | Modèle retenu, entraîné sur tout le train (43 Mo compressé : 247 vecteurs de poids sur ≈ 46 000 variables, plus le vocabulaire des TF-IDF) |
 | Sortie | `outputs/figures/fig10_comparaison_modeles.png` | Comparaison des modèles |
 
 ## 3. Démarche pas à pas
@@ -154,8 +154,8 @@ n'a **jamais** utilisé le navigateur de la session.
 Une forêt de 500 arbres occupe environ 1,1 Go en mémoire, car chaque nœud stocke 247
 probabilités. Au-delà de 2 forêts entraînées en parallèle, une machine de 8 Go sature et
 utilise le disque à la place de la RAM. Le parallélisme est donc limité à 2 pour ces
-modèles (`N_JOBS_FORETS`), et le modèle final est sauvegardé compressé : 39 Mo au lieu de
-1,5 Go.
+modèles (`N_JOBS_FORETS`), et le modèle final est sauvegardé compressé (39 Mo au lieu de
+1,5 Go pour la forêt de la première version).
 
 ## 5. Résultats / observations
 

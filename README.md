@@ -64,10 +64,14 @@ Les forêts aléatoires occupent environ 1 Go de mémoire chacune : le parallél
 
 ## Résultats
 
-Modèle retenu : forêt aléatoire (500 arbres, classes équilibrées) sur features simples + TF-IDF des
-traces, avec la contrainte « un utilisateur = un navigateur ».
-F1 macro en validation croisée stratifiée (4 plis) : **0,943 ± 0,005** ; accuracy 0,948 ;
-le vrai utilisateur est parmi les 3 premières propositions dans 98,7 % des cas.
+Modèle retenu : SVM linéaire (classes équilibrées, C = 0,3) sur le navigateur, le TF-IDF des
+jetons par famille et le TF-IDF des séquences d'actions complètes (action + écran + configuration
++ chaîne, et leurs bigrammes), avec la contrainte « un utilisateur = un navigateur ».
+F1 macro en validation croisée stratifiée (4 plis) : **0,967 ± 0,011** ; accuracy 0,971 ;
+le vrai utilisateur est parmi les 3 premières propositions dans 99,2 % des cas.
+
+Première version (forêt aléatoire sur features simples + TF-IDF) : 0,943 en validation croisée,
+0,941 sur le classement public Kaggle.
 
 ## Rendu
 
