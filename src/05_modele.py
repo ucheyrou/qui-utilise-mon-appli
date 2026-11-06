@@ -6,8 +6,8 @@ Pour chaque modèle du catalogue (src/modeles.py) :
 2. calcul des scores « hors pli » : chaque session est prédite par le modèle
    entraîné sur les 3 autres plis, donc sans jamais l'avoir vue.
 
-On teste ensuite la contrainte « un utilisateur = un navigateur » sur le
-meilleur modèle, puis on entraîne le modèle retenu sur tout le train.
+On teste ensuite la contrainte « un utilisateur = un navigateur » sur les
+meilleurs modèles, puis on entraîne le modèle retenu sur tout le train.
 
 Usage : python src/05_modele.py (après src/04_features.py ; environ 15 min)
 """
@@ -36,6 +36,9 @@ from figures import configurer_style, tracer_scores
 from modeles import ContrainteNavigateur, catalogue_modeles, construire_pipeline
 
 SUFFIXE_CONTRAINTE = " + contrainte navigateur"
+# La contrainte est testée sur les 2 meilleurs modèles : le meilleur (retenu
+# s'il reste en tête) et un second pour vérifier que le gain se répète.
+NB_MODELES_CONTRAINTS = 2
 
 
 def regler_hyperparametres(
@@ -153,7 +156,9 @@ def comparer_modeles(
 
     for nom, spec in catalogue_modeles().items():
         debut = time.perf_counter()
-        pipeline = construire_pipeline(spec["estimateur"], numeriques, spec.get("dense", False))
+        pipeline = construire_pipeline(
+            spec["estimateur"], numeriques, spec.get("dense", False), spec.get("sequences", False)
+        )
         n_jobs = spec.get("n_jobs", -1)
         meilleurs, resultats_grille = regler_hyperparametres(
             pipeline, spec["grille"], X, y, validation, n_jobs
@@ -186,35 +191,34 @@ def evaluer_contrainte_navigateur(
     y: pd.Series,
     validation: StratifiedKFold,
 ) -> pd.DataFrame:
-    """Applique ContrainteNavigateur au meilleur modèle probabiliste et l'évalue.
+    """Applique ContrainteNavigateur aux meilleurs modèles et les évalue.
 
-    Complète scores_par_modele et pipelines, et renvoie la comparaison avec
-    une ligne supplémentaire pour le modèle contraint.
+    La contrainte fonctionne avec des probabilités comme avec des scores de
+    décision (SVM) : on la teste donc sur les NB_MODELES_CONTRAINTS meilleurs
+    modèles, quels qu'ils soient. Complète scores_par_modele et pipelines, et
+    renvoie la comparaison avec une ligne supplémentaire par modèle contraint.
     """
-    probabilistes = comparaison[
-        comparaison["modele"].map(lambda nom: hasattr(pipelines[nom], "predict_proba"))
-    ]
-    meilleur = probabilistes.sort_values("f1_macro", ascending=False)["modele"].iloc[0]
-    nom_contraint = meilleur + SUFFIXE_CONTRAINTE
-
-    debut = time.perf_counter()
-    pipelines[nom_contraint] = ContrainteNavigateur(pipelines[meilleur])
-    n_jobs = catalogue_modeles()[meilleur].get("n_jobs", -1)
-    scores_par_modele[nom_contraint] = calculer_scores_hors_pli(
-        pipelines[nom_contraint], X, y, validation, n_jobs
-    )
     plis = [indices for _, indices in validation.split(X, y)]
-    ligne = {
-        "modele": nom_contraint,
-        "parametres": comparaison.set_index("modele").loc[meilleur, "parametres"],
-    }
-    ligne |= mesurer_par_pli(scores_par_modele[nom_contraint], np.sort(y.unique()), y, plis)
-    ligne["duree_s"] = time.perf_counter() - debut
-    print(
-        f"{nom_contraint:<32} F1 macro {ligne['f1_macro']:.3f} ± "
-        f"{ligne['f1_macro_ecart_type']:.3f}  accuracy {ligne['accuracy']:.3f}"
-    )
-    return pd.concat([comparaison, pd.DataFrame([ligne])], ignore_index=True)
+    meilleurs = comparaison.sort_values("f1_macro", ascending=False).head(NB_MODELES_CONTRAINTS)
+    lignes = []
+    for meilleur, parametres in zip(meilleurs["modele"], meilleurs["parametres"]):
+        nom_contraint = meilleur + SUFFIXE_CONTRAINTE
+        debut = time.perf_counter()
+        pipelines[nom_contraint] = ContrainteNavigateur(pipelines[meilleur])
+        n_jobs = catalogue_modeles()[meilleur].get("n_jobs", -1)
+        scores_par_modele[nom_contraint] = calculer_scores_hors_pli(
+            pipelines[nom_contraint], X, y, validation, n_jobs
+        )
+        ligne = {"modele": nom_contraint, "parametres": parametres}
+        ligne |= mesurer_par_pli(scores_par_modele[nom_contraint], np.sort(y.unique()), y, plis)
+        ligne["duree_s"] = time.perf_counter() - debut
+        lignes.append(ligne)
+        print(
+            f"{nom_contraint:<32} F1 macro {ligne['f1_macro']:.3f} ± "
+            f"{ligne['f1_macro_ecart_type']:.3f}  accuracy {ligne['accuracy']:.3f}",
+            flush=True,
+        )
+    return pd.concat([comparaison, pd.DataFrame(lignes)], ignore_index=True)
 
 
 def sauvegarder_resultats(

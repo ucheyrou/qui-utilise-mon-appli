@@ -24,7 +24,7 @@ résulte justifie les features retenues.
 | Entrée | `outputs/sessions_pretraitees_{train,test}.pkl` | Sessions de l'étape 3 |
 | Sortie | `outputs/features_train.pkl`, `outputs/features_test.pkl` | 3 279 et 324 lignes : identifiant, `navigateur`, 47 features numériques, 3 catégorielles, `actions` (pour le TF-IDF) |
 | Sortie | `outputs/tableaux/classement_features_anova.csv` | Score F de chaque feature numérique |
-| Sortie | `outputs/tableaux/carnet_essais_features.csv` | Résultats des 8 essais |
+| Sortie | `outputs/tableaux/carnet_essais_features.csv` | Résultats des 9 essais |
 | Sortie | `outputs/figures/fig08_…`, `fig09_…` | Classement des features, carnet d'essais |
 
 ## 3. Démarche pas à pas
@@ -60,6 +60,21 @@ Un `TfidfVectorizer` (`sublinear_tf=True`, `min_df=2`) en fait une matrice creus
 son vocabulaire et ses poids IDF **à l'intérieur du pipeline** (`construire_preprocesseur`),
 donc uniquement sur les plis d'entraînement.
 
+### 3.2 bis Les séquences d'actions complètes (`features.py`, essai E9)
+
+Les jetons par famille **découpent** chaque action : on sait qu'il y a eu une « Saisie dans un
+champ » et qu'on a vu l'écran des factures, mais pas que la saisie a eu lieu *sur* cet écran.
+`action_complete` garde au contraire l'action entière en un seul jeton
+(`libellé|écran|configuration|chaîne|mode`), et `jetons_actions_completes` y ajoute chaque couple
+d'actions complètes consécutives (`A >> B`). C'est l'équivalent des « bigrammes de mots » en
+traitement du texte, où l'action complète joue le rôle du mot.
+
+Ces jetons passent dans un **second** `TfidfVectorizer` (option `actions_completes=True` de
+`construire_preprocesseur`, mêmes réglages `sublinear_tf=True`, `min_df=2`), plutôt que d'être
+ajoutés comme une famille de plus. Chaque bloc TF-IDF est ainsi normalisé séparément (norme L2),
+ce qui évite que les dizaines de milliers de bigrammes d'actions complètes écrasent les jetons
+par famille.
+
 ### 3.3 Inspection : classement univarié (`04_features.py`)
 
 `classer_features_simples` calcule le **score F de l'ANOVA** de chaque feature numérique. Ce
@@ -68,7 +83,7 @@ utilisateur. Un score élevé signifie que la feature sépare bien les utilisate
 
 ### 3.4 Le carnet d'essais (`04_features.py`)
 
-`definir_essais` liste 8 essais, et `evaluer_essai` évalue chacun avec :
+`definir_essais` liste 9 essais, et `evaluer_essai` évalue chacun avec :
 
 - **le même modèle** : forêt aléatoire de 300 arbres, hyperparamètres par défaut ;
 - **le même découpage** : `StratifiedKFold` à 4 plis, `random_state=42`.
@@ -97,6 +112,13 @@ Seules les features changent d'un essai à l'autre, ce qui rend la comparaison �
   session, qui ne peuvent pas aider à généraliser.
 - **Bigrammes d'actions.** Ils capturent une partie de l'*ordre* des actions (habitudes
   d'enchaînement), que le simple sac de mots perd.
+- **Actions complètes (E9).** C'était une des pistes listées après la première version
+  (« jetons combinant action et écran »). Une même action n'a pas le même sens selon
+  l'écran ou la chaîne où elle est faite : garder le contexte rend le jeton beaucoup plus
+  spécifique à un utilisateur. Les bigrammes d'actions complètes décrivent un geste
+  précis (« valider ce formulaire puis ouvrir cette dialogue »). On s'est arrêté aux
+  bigrammes : les trigrammes ont été essayés avec le SVM de l'étape 5 et n'apportent rien
+  (F1 macro 0,965 contre 0,967), pour un vocabulaire bien plus gros.
 - **Prévention des fuites.** Tout ce qui « apprend » sur plusieurs sessions (normalisation,
   one-hot, vocabulaire et IDF du TF-IDF) est dans le `Pipeline`. La validation croisée le
   réapprend donc à chaque pli sur les seules données d'entraînement. Les features simples
@@ -184,9 +206,7 @@ Cette étape s'est construite par essais et erreurs, à garder pour la discussio
   la forêt (0,939).
 - **Le classement ANOVA est univarié.** Il ne voit ni les redondances entre features ni
   leurs interactions. L'importance par permutation, à l'étape 6, complétera cette analyse.
-- **Pistes de features** :
-  - jetons combinant action et écran (`Exécution d'un bouton@MajFactureAchForm`) ;
-  - trigrammes d'actions ;
+- **Pistes de features** (les jetons combinant action et contexte ont été réalisés : essai E9) :
   - premières actions de la session (rituel de démarrage) ;
   - normalisation des configurations contenant des dates.
 - **Le one-hot du navigateur suppose qu'un utilisateur garde son navigateur.** C'est vrai

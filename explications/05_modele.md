@@ -11,7 +11,9 @@ Lancement : `python src/05_modele.py` (après l'étape 4, environ 20 min).
 
 Choisir le modèle de classification et ses hyperparamètres. On en compare plusieurs, chacun
 réglé au mieux, sur les **mêmes features** (essai E8 de l'étape 4 : features simples +
-TF-IDF complet) et avec la **même validation croisée**. On teste ensuite une règle métier
+TF-IDF complet) et avec la **même validation croisée**. Un modèle supplémentaire, le SVM
+linéaire, est aussi évalué sur la représentation « séquences d'actions complètes » (essai E9),
+qui s'est révélée bien mieux adaptée aux modèles linéaires. On teste ensuite une règle métier
 issue de l'exploration, « un utilisateur n'utilise qu'un seul navigateur », puis on
 entraîne le modèle retenu sur tout le jeu d'entraînement.
 
@@ -40,8 +42,8 @@ entraîne le modèle retenu sur tout le jeu d'entraînement.
      probabilités (ou scores de décision pour le SVM) données par le modèle entraîné **sur
      les 3 autres plis** ;
    - `mesurer_par_pli` en déduit le F1 macro, le F1 pondéré et l'accuracy de chaque pli.
-3. `evaluer_contrainte_navigateur` applique la classe `ContrainteNavigateur` au meilleur
-   modèle et l'évalue de la même façon.
+3. `evaluer_contrainte_navigateur` applique la classe `ContrainteNavigateur` aux **deux
+   meilleurs** modèles (`NB_MODELES_CONTRAINTS`) et les évalue de la même façon.
 4. Le meilleur modèle (F1 macro) est réentraîné sur les 3 279 sessions et sauvegardé.
 
 ## 4. Choix et justifications
@@ -58,6 +60,32 @@ entraîne le modèle retenu sur tout le jeu d'entraînement.
 | Extra-Trees | Variante plus aléatoire de la forêt (seuils tirés au hasard) | idem |
 | Perceptron multicouche | Réseau de neurones simple (demandé dans les consignes) | 256 ou 512 neurones, régularisation α |
 | Gradient boosting | Méthode d'ensemble séquentielle (type XGBoost) | réglages fixés (voir ci-dessous) |
+| SVM linéaire sur séquences d'actions | Même modèle, mais sur navigateur + TF-IDF par famille + TF-IDF des actions complètes et de leurs bigrammes (E9), sans features simples | C ∈ {0,3 ; 1 ; 3}, `class_weight=balanced` |
+
+### Pourquoi une représentation à part pour le SVM
+
+Avec les features de E8, le SVM plafonnait à 0,890. Deux raisons :
+
+- **Le contexte des actions était perdu.** Les jetons par famille séparent l'action de son
+  écran ; les jetons « action complète » (étape 4, E9) les gardent ensemble, et leurs
+  bigrammes décrivent un geste précis. Ces jetons sont très nombreux (≈ 46 000) et chacun
+  est rare, mais très spécifique à un utilisateur : c'est exactement le cas où un modèle
+  linéaire sur TF-IDF excelle, car il additionne les petites contributions de tous les
+  jetons présents.
+- **Les features simples centrées-réduites gênaient le SVM.** Mêlées aux TF-IDF (valeurs
+  entre 0 et 1, normées par session), elles n'ont pas la même échelle et dominent la marge :
+  sur la représentation séquences, les ajouter faisait tomber le F1 macro de 0,95 à 0,93.
+
+À l'inverse, la forêt n'en profite pas (E9 : 0,897 contre 0,913 pour E8) : à chaque nœud,
+elle ne regarde qu'un tirage de √p ≈ 200 colonnes parmi 46 000 et rate la plupart des jetons
+utiles. **La meilleure représentation dépend du modèle**, d'où ce couple « features + modèle »
+évalué à part.
+
+Essais complémentaires, sans gain (F1 macro avec contrainte, 4 plis) : jetons vus une seule
+fois conservés (`min_df=1`, 0,969), trigrammes d'actions complètes (0,965), jetons des 10
+premières actions (0,968), dates masquées dans les configurations (0,969), régression
+logistique (0,959), classifieur ridge (0,966), moyenne des scores SVM et forêt (0,971, gain
+dans le bruit et modèle bien plus lourd).
 
 ### Critère de sélection : le F1 macro
 
@@ -94,7 +122,11 @@ forêt aléatoire prédisait pourtant, pour 17 de ses 182 erreurs, un utilisateu
 n'a **jamais** utilisé le navigateur de la session.
 
 - **Principe** : on met à zéro la probabilité des utilisateurs incompatibles avec le
-  navigateur, puis on renormalise.
+  navigateur, puis on renormalise. Pour un modèle qui ne donne que des scores de décision
+  (SVM), on ramène le score des utilisateurs incompatibles sous le plus petit score de la
+  session : ils passent en dernière position, sans changer l'ordre des autres. La contrainte
+  s'applique donc à n'importe quel modèle (méthodes exposées avec `available_if` selon ce
+  que sait faire le modèle encapsulé).
 - **Apprentissage sans fuite** : la correspondance utilisateur → navigateur est apprise à
   l'entraînement, donc pli par pli pendant la validation croisée.
 - **Cas de repli** : si le modèle n'accordait aucune probabilité aux utilisateurs
@@ -126,6 +158,15 @@ modèles (`N_JOBS_FORETS`), et le modèle final est sauvegardé compressé : 39 
 1,5 Go.
 
 ## 5. Résultats / observations
+
+> **Mise à jour (modèle séquences)** : le SVM linéaire sur séquences d'actions obtient
+> **0,966 ± 0,010** de F1 macro (accuracy 0,970, C = 0,3) sans contrainte, et environ
+> **0,969** avec la contrainte navigateur. Il devient le modèle retenu, devant la forêt
+> contrainte (0,943), tout en s'entraînant en quelques secondes. Avec 10 plis (90 % du
+> train pour apprendre, plus proche du modèle final entraîné sur tout le train), il atteint
+> 0,974. Les erreurs restantes portent surtout sur des sessions courtes (130 actions en
+> médiane contre 340). Le tableau ci-dessous est celui de la première version ; il sera
+> régénéré par `python src/05_modele.py`.
 
 Validation croisée stratifiée à 4 plis, moyenne ± écart-type sur les plis (fig10) :
 
@@ -162,7 +203,9 @@ Ce qu'on en retient :
 - **Le k-NN est le moins bon modèle « appris »** : avec k = 1, il copie l'utilisateur de la
   session la plus proche, ce qui est fragile quand les sessions d'un même utilisateur
   varient beaucoup.
-- **Modèle retenu : forêt aléatoire équilibrée + contrainte navigateur.**
+- **Modèle retenu (première version) : forêt aléatoire équilibrée + contrainte navigateur**,
+  remplacée ensuite par le SVM linéaire sur séquences d'actions + contrainte navigateur
+  (voir l'encadré ci-dessus).
 
 ## 6. Limites et pistes d'amélioration
 
@@ -174,7 +217,6 @@ Ce qu'on en retient :
   croisée répétée le permettrait.
 - **Pistes de modèles** :
   - combiner les probabilités de la forêt et des Extra-Trees (vote souple) ;
-  - calibrer le SVM ;
   - régler davantage le boosting (plus d'itérations, puisque le score montait encore).
 - **Hypothèse forte de la contrainte navigateur** : un utilisateur qui change de navigateur
   dans le test serait systématiquement mal classé.

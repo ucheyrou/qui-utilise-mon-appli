@@ -4,7 +4,7 @@ Contient :
 - le catalogue des modèles comparés à l'étape 5, avec leur grille d'hyperparamètres ;
 - la construction du pipeline complet (features + modèle) ;
 - ContrainteNavigateur, qui applique la règle métier « un utilisateur
-  n'utilise qu'un navigateur » aux probabilités d'un modèle.
+  n'utilise qu'un navigateur » aux probabilités (ou scores) d'un modèle.
 
 Voir explications/05_modele.md.
 """
@@ -22,6 +22,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
+from sklearn.utils.metaestimators import available_if
 
 from config import RANDOM_STATE
 from features import COLONNES_CATEGORIELLES, FAMILLES_JETONS_COMPLETES, construire_preprocesseur
@@ -42,7 +43,8 @@ def catalogue_modeles() -> dict[str, dict]:
         pour GridSearchCV, vide si aucun réglage), et si besoin « dense »
         (True si le modèle n'accepte pas les matrices creuses) et « n_jobs »
         (nombre d'entraînements en parallèle pendant la validation croisée,
-        tous les cœurs par défaut).
+        tous les cœurs par défaut) et « sequences » (True pour utiliser la
+        représentation par séquences d'actions complètes au lieu de l'essai E8).
     """
     return {
         "Référence (classe majoritaire)": {
@@ -60,6 +62,13 @@ def catalogue_modeles() -> dict[str, dict]:
         "SVM linéaire": {
             "estimateur": LinearSVC(max_iter=5000),
             "grille": {"modele__C": [0.03, 0.1, 0.3]},
+        },
+        # Même modèle que ci-dessus, mais sur la représentation « séquences
+        # d'actions complètes » (voir construire_pipeline et explications/05_modele.md).
+        "SVM linéaire sur séquences d'actions": {
+            "estimateur": LinearSVC(class_weight="balanced", max_iter=5000),
+            "grille": {"modele__C": [0.3, 1, 3]},
+            "sequences": True,
         },
         "Forêt aléatoire": {
             "estimateur": RandomForestClassifier(
@@ -108,8 +117,10 @@ def catalogue_modeles() -> dict[str, dict]:
     }
 
 
-def construire_pipeline(estimateur, numeriques: list[str], dense: bool = False) -> Pipeline:
-    """Assemble le pipeline complet : features de l'essai E8 puis modèle.
+def construire_pipeline(
+    estimateur, numeriques: list[str], dense: bool = False, sequences: bool = False
+) -> Pipeline:
+    """Assemble le pipeline complet : features puis modèle.
 
     Paramètres
     ----------
@@ -120,36 +131,58 @@ def construire_pipeline(estimateur, numeriques: list[str], dense: bool = False) 
     dense : bool
         True pour convertir la matrice creuse en matrice dense (modèles qui
         n'acceptent pas le format creux, comme le gradient boosting).
+    sequences : bool
+        False : features de l'essai E8 (features simples + TF-IDF par famille).
+        True : navigateur + TF-IDF par famille + TF-IDF des séquences d'actions
+        complètes, sans les features simples (essai E9 de l'étape 4). Les
+        features simples centrées-réduites, mêlées aux TF-IDF, dégradaient le
+        SVM (F1 macro 0,93 au lieu de 0,95) : elles n'ont pas la même échelle.
 
     Renvoie
     -------
     Pipeline
         Étapes « preprocesseur » et « modele ».
     """
-    preprocesseur = construire_preprocesseur(
-        numeriques, COLONNES_CATEGORIELLES, FAMILLES_JETONS_COMPLETES
-    )
+    if sequences:
+        preprocesseur = construire_preprocesseur(
+            familles_jetons=FAMILLES_JETONS_COMPLETES, actions_completes=True
+        )
+    else:
+        preprocesseur = construire_preprocesseur(
+            numeriques, COLONNES_CATEGORIELLES, FAMILLES_JETONS_COMPLETES
+        )
     if dense:
         preprocesseur.set_params(sparse_threshold=0)
     return Pipeline([("preprocesseur", preprocesseur), ("modele", estimateur)])
+
+
+def _encapsule_possede(nom: str):
+    """Condition pour available_if : le modèle encapsulé possède la méthode « nom »."""
+    return lambda contrainte: hasattr(contrainte.estimateur, nom)
 
 
 class ContrainteNavigateur(ClassifierMixin, BaseEstimator):
     """Applique la règle « un utilisateur = un navigateur » à un classifieur.
 
     À l'entraînement, on retient les navigateurs utilisés par chaque
-    utilisateur. À la prédiction, on met à zéro la probabilité des
-    utilisateurs qui n'ont jamais utilisé le navigateur de la session, puis on
-    renormalise. Si le modèle n'accordait aucune probabilité aux utilisateurs
-    compatibles, ceux-ci reçoivent une probabilité uniforme : une prédiction
-    incompatible serait fausse à coup sûr. Si le navigateur n'a jamais été vu,
-    tous les utilisateurs restent possibles.
+    utilisateur. À la prédiction, les utilisateurs qui n'ont jamais utilisé
+    le navigateur de la session sont écartés :
+
+    - modèle probabiliste (predict_proba) : leur probabilité est mise à zéro,
+      puis on renormalise. Si le modèle n'accordait aucune probabilité aux
+      utilisateurs compatibles, ceux-ci reçoivent une probabilité uniforme :
+      une prédiction incompatible serait fausse à coup sûr ;
+    - modèle à scores de décision (SVM, decision_function) : leur score est
+      ramené sous le plus petit score de la session, ce qui les place en
+      dernière position sans changer l'ordre des utilisateurs compatibles.
+
+    Si le navigateur n'a jamais été vu, tous les utilisateurs restent possibles.
 
     Paramètres
     ----------
     estimateur : classifieur scikit-learn
-        Modèle disposant de predict_proba, appliqué à un DataFrame contenant
-        une colonne « navigateur ».
+        Modèle disposant de predict_proba ou de decision_function, appliqué à
+        un DataFrame contenant une colonne « navigateur ».
     """
 
     def __init__(self, estimateur):
@@ -168,18 +201,34 @@ class ContrainteNavigateur(ClassifierMixin, BaseEstimator):
         }
         return self
 
-    def predict_proba(self, X):
-        """Probabilités du modèle, restreintes aux utilisateurs du bon navigateur."""
-        probas = self.estimateur_.predict_proba(X)
-        masque = np.array([
+    def _masque(self, X) -> np.ndarray:
+        """Matrice sessions x utilisateurs : True si l'utilisateur est compatible."""
+        return np.array([
             self.masques_.get(navigateur, np.ones(len(self.classes_), dtype=bool))
             for navigateur in X["navigateur"]
         ])
+
+    @available_if(_encapsule_possede("predict_proba"))
+    def predict_proba(self, X):
+        """Probabilités du modèle, restreintes aux utilisateurs du bon navigateur."""
+        probas = self.estimateur_.predict_proba(X)
+        masque = self._masque(X)
         restreintes = probas * masque
         sans_masse = restreintes.sum(axis=1) == 0
         restreintes[sans_masse] = masque[sans_masse]
         return restreintes / restreintes.sum(axis=1, keepdims=True)
 
+    @available_if(_encapsule_possede("decision_function"))
+    def decision_function(self, X):
+        """Scores du modèle, ceux des utilisateurs incompatibles relégués en dernier."""
+        scores = self.estimateur_.decision_function(X)
+        plancher = scores.min(axis=1, keepdims=True) - 1
+        return np.where(self._masque(X), scores, plancher)
+
     def predict(self, X):
-        """Utilisateur le plus probable parmi ceux compatibles avec le navigateur."""
-        return self.classes_[self.predict_proba(X).argmax(axis=1)]
+        """Utilisateur le mieux noté parmi ceux compatibles avec le navigateur."""
+        if hasattr(self.estimateur_, "predict_proba"):
+            scores = self.predict_proba(X)
+        else:
+            scores = self.decision_function(X)
+        return self.classes_[scores.argmax(axis=1)]

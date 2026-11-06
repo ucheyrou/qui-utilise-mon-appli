@@ -62,7 +62,8 @@ def definir_essais(colonnes_parts: list[str]) -> list[dict]:
     -------
     list[dict]
         Pour chaque essai : code, description et arguments de
-        construire_preprocesseur (numeriques, categorielles, familles_jetons).
+        construire_preprocesseur (numeriques, categorielles, familles_jetons,
+        actions_completes).
     """
     comptage = [COLONNE_COMPTAGE_SIMPLE]
     rythme = comptage + COLONNES_RYTHME
@@ -104,6 +105,12 @@ def definir_essais(colonnes_parts: list[str]) -> list[dict]:
             "categorielles": COLONNES_CATEGORIELLES,
             "familles_jetons": FAMILLES_JETONS_COMPLETES,
         },
+        {
+            "code": "E9",
+            "description": "E7 + TF-IDF des séquences d'actions complètes",
+            "familles_jetons": FAMILLES_JETONS_COMPLETES,
+            "actions_completes": True,
+        },
     ]
 
 
@@ -134,7 +141,8 @@ def evaluer_essai(
         (moyenne et écart-type sur les plis) et durée de l'essai.
     """
     arguments = {
-        cle: essai[cle] for cle in ("numeriques", "categorielles", "familles_jetons")
+        cle: essai[cle]
+        for cle in ("numeriques", "categorielles", "familles_jetons", "actions_completes")
         if cle in essai
     }
     modele = make_pipeline(

@@ -5,10 +5,15 @@ Deux sortes de features :
 1. Les features « simples », construites à la main et calculées session par
    session (comptages, proportions, rythme, écrans principaux). Elles ne
    dépendent d'aucune autre session : on peut les calculer une fois pour toutes.
-2. Le sac de jetons pondéré par TF-IDF (actions, écrans, configurations,
-   chaînes, enchaînements d'actions). Les poids IDF dépendent du jeu sur
-   lequel on les apprend : ils sont donc calculés dans le pipeline
-   scikit-learn, uniquement sur les plis d'entraînement (pas de fuite).
+2. Les sacs de jetons pondérés par TF-IDF :
+   - jetons par famille (actions, écrans, configurations, chaînes,
+     enchaînements de libellés) ;
+   - « séquences d'actions complètes » : chaque action gardée entière
+     (libellé + écran + configuration + chaîne + mode) et chaque couple
+     d'actions complètes consécutives.
+   Les poids IDF dépendent du jeu sur lequel on les apprend : ils sont donc
+   calculés dans le pipeline scikit-learn, uniquement sur les plis
+   d'entraînement (pas de fuite).
 
 Voir explications/04_features.md.
 """
@@ -210,17 +215,57 @@ def jetons_session(actions: list, familles=FAMILLES_JETONS_COMPLETES) -> list[st
     return jetons
 
 
+def action_complete(action) -> str:
+    """Écrit une action entière en un seul jeton (« libellé|écran|conf|chaîne|mode »).
+
+    Contrairement aux jetons par famille, on ne sépare pas l'action de son
+    contexte : « Saisie dans un champ » sur l'écran des commandes et sur
+    l'écran des tiers donnent deux jetons différents.
+    """
+    return "|".join([
+        action.action,
+        action.ecran or "",
+        action.conf or "",
+        action.chaine or "",
+        "modif" if action.modif else "",
+    ])
+
+
+def jetons_actions_completes(actions: list) -> list[str]:
+    """Transforme une session en jetons « actions complètes » et leurs bigrammes.
+
+    Paramètres
+    ----------
+    actions : list[Action]
+        Actions décomposées de la session.
+
+    Renvoie
+    -------
+    list[str]
+        Une action complète par action de la session, puis un jeton
+        « A >> B » pour chaque couple d'actions complètes consécutives (le
+        geste précis enchaîné par l'utilisateur, dans son contexte).
+    """
+    completes = [action_complete(action) for action in actions]
+    return completes + [f"{avant} >> {apres}" for avant, apres in zip(completes, completes[1:])]
+
+
 def construire_preprocesseur(
     numeriques: list[str] | tuple = (),
     categorielles: list[str] | tuple = (),
     familles_jetons: tuple[str, ...] | None = None,
+    actions_completes: bool = False,
 ) -> ColumnTransformer:
     """Assemble la transformation des colonnes en matrice de features.
 
     - navigateur : toujours inclus, encodé en one-hot (pas d'ordre entre navigateurs) ;
     - numériques : centrées-réduites (utile aux modèles linéaires, neutre pour les arbres) ;
     - catégorielles : one-hot, les modalités vues une seule fois sont regroupées ;
-    - traces : TF-IDF sur les jetons de jetons_session, si familles_jetons est donné.
+    - traces : TF-IDF sur les jetons de jetons_session, si familles_jetons est donné ;
+    - sequences : TF-IDF sur les jetons de jetons_actions_completes, si
+      actions_completes est vrai. C'est un second TF-IDF (et non une famille de
+      plus) pour que chaque bloc soit normalisé séparément : les très nombreux
+      bigrammes d'actions complètes n'écrasent pas les jetons par famille.
 
     Paramètres
     ----------
@@ -228,6 +273,8 @@ def construire_preprocesseur(
         Colonnes du tableau de features à utiliser.
     familles_jetons : tuple[str, ...] | None
         Familles de jetons pour le TF-IDF ; None pour ne pas l'utiliser.
+    actions_completes : bool
+        True pour ajouter le TF-IDF des séquences d'actions complètes.
 
     Renvoie
     -------
@@ -254,4 +301,9 @@ def construire_preprocesseur(
             min_df=2,
         )
         transformations.append(("traces", vectoriseur, "actions"))
+    if actions_completes:
+        vectoriseur = TfidfVectorizer(
+            analyzer=jetons_actions_completes, sublinear_tf=True, min_df=2
+        )
+        transformations.append(("sequences", vectoriseur, "actions"))
     return ColumnTransformer(transformations)
