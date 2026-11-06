@@ -12,7 +12,7 @@ sur Kaggle, en vérifiant qu'il respecte exactement le format attendu.
 
 | | Fichier | Contenu |
 |---|---|---|
-| Entrée | `outputs/modele_final.joblib` | Pipeline complet (features + forêt + contrainte navigateur) entraîné sur les 3 279 sessions du train |
+| Entrée | `outputs/modele_final.joblib` | Pipeline complet (TF-IDF + SVM linéaire sur séquences d'actions + contrainte navigateur) entraîné sur les 3 279 sessions du train |
 | Entrée | `outputs/features_test.pkl` | Features du test (étape 4), avec la colonne `RowId` |
 | Entrée | `data/sample_submission.csv` | Format de référence |
 | Sortie | `outputs/submission.csv` | 324 lignes, colonnes `RowId` et `prediction` (trigramme), UTF-8 |
@@ -21,9 +21,9 @@ sur Kaggle, en vérifiant qu'il respecte exactement le format attendu.
 
 1. Chargement du modèle final et des features du test.
 2. `predire_test` : le pipeline applique au test **exactement** les transformations apprises
-   sur le train, puis la forêt et la contrainte navigateur prédisent un utilisateur par
-   session. Les transformations concernées sont la normalisation, le one-hot, ainsi que le
-   vocabulaire et les poids IDF du TF-IDF.
+   sur le train, puis le SVM et la contrainte navigateur prédisent un utilisateur par
+   session. Les transformations concernées sont le one-hot du navigateur, ainsi que le
+   vocabulaire et les poids IDF des deux TF-IDF.
 3. `verifier_soumission` contrôle :
    - les noms de colonnes ;
    - l'ordre et les valeurs des `RowId` (identiques à `sample_submission.csv`) ;
@@ -51,15 +51,21 @@ sur Kaggle, en vérifiant qu'il respecte exactement le format attendu.
 ## 5. Résultats / observations
 
 - **Contrôles** : 324 prédictions, au bon format, et tous les contrôles passent.
-- **Diversité des prédictions** : 218 utilisateurs distincts sont prédits sur les 247 du
-  train. C'est cohérent avec un test de 324 sessions, puisque beaucoup d'utilisateurs n'y
+- **Diversité des prédictions** : 226 utilisateurs distincts sont prédits sur les 247 du
+  train (218 avec la forêt de la première version). C'est cohérent avec un test de 324 sessions, puisque beaucoup d'utilisateurs n'y
   ont qu'une ou deux sessions, voire aucune.
-- **Score attendu** : d'après la validation croisée, environ 0,94 de F1 macro, ou 0,95
-  d'accuracy si Kaggle calcule en réalité un F1 micro.
-- **Score Kaggle public** : *à compléter après le dépôt*. Un écart important avec la
-  validation croisée signalerait un sur-apprentissage du choix de modèle, ou une
-  différence de distribution entre train et test. L'étape 2 ne laissait pas présager une
-  telle différence.
+- **Première version (forêt + contrainte navigateur)** : validation croisée 0,943, score
+  Kaggle public **0,941**. L'accord est excellent : notre validation croisée est un bon
+  estimateur du score sur le test, il n'y a ni sur-apprentissage du choix de modèle ni
+  différence de distribution entre train et test (ce que l'étape 2 laissait attendre).
+- **Version actuelle (SVM sur séquences + contrainte navigateur)** : validation croisée
+  0,967 (4 plis), 0,974 (10 plis, plus proche du modèle final entraîné sur tout le train).
+  Score attendu : environ 0,97. La nouvelle soumission diffère de la première sur
+  12 sessions sur 324. Score Kaggle public : *à compléter après le dépôt*.
+- **Ordre de grandeur du bruit** : le test ne compte que 324 sessions, et le classement
+  public n'en utilise qu'une partie. Une seule erreur de plus ou de moins déplace le score
+  d'environ 0,003 à 0,006 : des écarts de 0,01 entre deux soumissions ne sont pas
+  significatifs.
 
 ## 6. Limites et pistes d'amélioration
 

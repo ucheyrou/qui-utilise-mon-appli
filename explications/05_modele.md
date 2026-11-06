@@ -159,20 +159,13 @@ modèles (`N_JOBS_FORETS`), et le modèle final est sauvegardé compressé : 39 
 
 ## 5. Résultats / observations
 
-> **Mise à jour (modèle séquences)** : le SVM linéaire sur séquences d'actions obtient
-> **0,966 ± 0,010** de F1 macro (accuracy 0,970, C = 0,3) sans contrainte, et environ
-> **0,969** avec la contrainte navigateur. Il devient le modèle retenu, devant la forêt
-> contrainte (0,943), tout en s'entraînant en quelques secondes. Avec 10 plis (90 % du
-> train pour apprendre, plus proche du modèle final entraîné sur tout le train), il atteint
-> 0,974. Les erreurs restantes portent surtout sur des sessions courtes (130 actions en
-> médiane contre 340). Le tableau ci-dessous est celui de la première version ; il sera
-> régénéré par `python src/05_modele.py`.
-
 Validation croisée stratifiée à 4 plis, moyenne ± écart-type sur les plis (fig10) :
 
 | Modèle | Hyperparamètres retenus | F1 macro | Accuracy |
 |---|---|---|---|
-| **Forêt aléatoire + contrainte navigateur** | `class_weight=balanced`, `max_features=sqrt` | **0,943** ± 0,005 | 0,948 |
+| **SVM linéaire sur séquences d'actions + contrainte navigateur** | C = 0,3, `class_weight=balanced` | **0,967** ± 0,011 | **0,971** |
+| SVM linéaire sur séquences d'actions | idem | 0,966 ± 0,010 | 0,970 |
+| Forêt aléatoire + contrainte navigateur | `class_weight=balanced`, `max_features=sqrt` | 0,943 ± 0,005 | 0,948 |
 | Forêt aléatoire | idem | 0,939 ± 0,006 | 0,944 |
 | Extra-Trees | `class_weight=balanced`, `max_features=0.05` | 0,935 ± 0,005 | 0,951 |
 | Perceptron multicouche | 256 neurones, α = 10⁻⁴ | 0,903 ± 0,003 | 0,921 |
@@ -184,7 +177,12 @@ Validation croisée stratifiée à 4 plis, moyenne ± écart-type sur les plis (
 
 Ce qu'on en retient :
 
-- **Les forêts dominent.** Notre interprétation : la signature d'un utilisateur est une
+- **Le SVM sur séquences d'actions est nettement en tête** (+0,024 sur la forêt contrainte,
+  plus de deux écarts-types entre plis), et il s'entraîne en 20 s contre près de 7 min pour
+  la forêt. Avec 10 plis (90 % du train pour apprendre, plus proche du modèle final), il
+  atteint 0,974. Les erreurs restantes portent surtout sur des sessions courtes (130
+  actions en médiane contre 340).
+- **Sur les features E8, les forêts dominent.** Notre interprétation : la signature d'un utilisateur est une
   *combinaison* de proportions d'actions (« beaucoup de flags **et** peu de raccourcis
   **et** tel écran »). Un arbre exprime naturellement ces combinaisons, alors qu'un modèle
   linéaire additionne des effets indépendants. Le moyennage de 500 arbres limite le
@@ -196,16 +194,20 @@ Ce qu'on en retient :
 - **Les Extra-Trees ont la meilleure accuracy (0,951) mais un F1 macro plus faible.** Ils
   reconnaissent mieux les gros utilisateurs et moins bien les petits. C'est un bon exemple
   où le choix de la métrique change le choix du modèle.
-- **Les modèles linéaires sont nettement en dessous**, contrairement à ce qu'on attendait
-  pour du TF-IDF (voir l'étape 4). Le SVM retient C = 0,3, en bord de grille. Un essai
+- **Sur les features E8, les modèles linéaires sont nettement en dessous**, contrairement à
+  ce qu'on attendait pour du TF-IDF (voir l'étape 4). C'est ce constat qui nous a conduits
+  à leur donner une représentation adaptée (actions complètes, sans features simples). Le SVM retient C = 0,3, en bord de grille. Un essai
   préalable à C = 1 donnait le même score avec des problèmes de convergence, d'où la grille
   limitée à 0,3.
 - **Le k-NN est le moins bon modèle « appris »** : avec k = 1, il copie l'utilisateur de la
   session la plus proche, ce qui est fragile quand les sessions d'un même utilisateur
   varient beaucoup.
-- **Modèle retenu (première version) : forêt aléatoire équilibrée + contrainte navigateur**,
-  remplacée ensuite par le SVM linéaire sur séquences d'actions + contrainte navigateur
-  (voir l'encadré ci-dessus).
+- **La contrainte navigateur aide les deux modèles** (+0,001 pour le SVM, +0,004 pour la
+  forêt). Le gain est plus faible pour le SVM, qui utilise déjà le navigateur comme variable
+  (le one-hot du navigateur a un poids fort dans ses scores).
+- **Modèle retenu : SVM linéaire sur séquences d'actions + contrainte navigateur.** La
+  première version (forêt contrainte) a obtenu 0,941 sur Kaggle, pour 0,943 en validation
+  croisée.
 
 ## 6. Limites et pistes d'amélioration
 

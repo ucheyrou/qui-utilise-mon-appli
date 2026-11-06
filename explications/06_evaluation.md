@@ -44,7 +44,8 @@ Kaggle :
    - couples les plus confondus (`lister_confusions`).
 5. `tracer_courbe_apprentissage` réentraîne le modèle retenu sur 25, 50, 75 et 100 % des
    plis d'entraînement.
-6. `extraire_importances` récupère l'importance de chaque variable dans la forêt finale.
+6. `extraire_importances` récupère l'importance de chaque variable dans le modèle final :
+   diminution d'impureté pour une forêt, poids absolu moyen pour un modèle linéaire.
 
 ## 4. Choix et justifications
 
@@ -56,7 +57,7 @@ précieux quand certains utilisateurs n'ont que 4 sessions.
 
 Les métriques sont ici calculées **sur l'ensemble des 3 279 prédictions hors pli**, alors
 que l'étape 5 fait la **moyenne des scores de chaque pli**. Le F1 macro « global » est
-légèrement plus élevé (0,947 contre 0,943). Dans un pli, chaque utilisateur n'a que 1 à 4
+légèrement plus élevé (0,969 contre 0,967 pour le modèle retenu). Dans un pli, chaque utilisateur n'a que 1 à 4
 sessions, ce qui rend son F1 très bruité et tire la moyenne vers le bas. Le score de
 référence pour comparer les modèles reste celui de l'étape 5.
 
@@ -127,9 +128,12 @@ C'est **exactement la ROC micro**. Choisir un seuil revient à arbitrer entre :
 - **Courbe d'apprentissage** : un écart persistant entre score d'entraînement et score de
   validation signale de la variance (sur-apprentissage). Une courbe de validation qui monte
   encore indique que plus de données aideraient.
-- **Importances** : on utilise la diminution moyenne d'impureté de Gini, gratuite à
-  calculer pour une forêt. L'importance par permutation serait plus fiable, mais elle
-  demanderait des centaines de prédictions sur 1 800 variables.
+- **Importances** : pour le SVM linéaire retenu, chaque utilisateur a un vecteur de poids ;
+  l'importance d'une variable est la **moyenne sur les utilisateurs de la valeur absolue de
+  son poids**. C'est légitime ici parce que les variables ont la même échelle (TF-IDF
+  normés, navigateur en 0/1). Pour une forêt, on utiliserait la diminution moyenne
+  d'impureté de Gini. L'importance par permutation serait plus fiable dans les deux cas,
+  mais elle demanderait des centaines de prédictions sur 46 000 variables.
 
 ## 5. Résultats / observations
 
@@ -137,8 +141,10 @@ C'est **exactement la ROC micro**. Choisir un seuil revient à arbitrer entre :
 
 | Modèle | F1 macro | Accuracy (= F1 micro) | Top-3 | Top-5 | AUC macro | AUC micro | Préc. moy. micro |
 |---|---|---|---|---|---|---|---|
-| **Forêt + contrainte navigateur** | **0,947** | 0,948 | 0,987 | 0,993 | **0,9992** | **0,9995** | 0,974 |
-| Extra-Trees | 0,943 | **0,951** | **0,988** | 0,993 | 0,9985 | 0,9990 | **0,980** |
+| **SVM sur séquences + contrainte navigateur** | **0,969** | **0,971** | **0,992** | **0,995** | **0,9993** | **0,9996** | **0,985** |
+| SVM sur séquences | 0,967 | 0,970 | 0,992 | 0,995 | 0,9992 | 0,9996 | 0,984 |
+| Forêt + contrainte navigateur | 0,947 | 0,948 | 0,987 | 0,993 | 0,9992 | 0,9995 | 0,974 |
+| Extra-Trees | 0,943 | 0,951 | 0,988 | 0,993 | 0,9985 | 0,9990 | 0,980 |
 | Forêt aléatoire | 0,942 | 0,945 | 0,986 | 0,991 | 0,9989 | 0,9992 | 0,966 |
 | Perceptron multicouche | 0,911 | 0,921 | 0,969 | 0,980 | 0,9979 | 0,9982 | 0,965 |
 | SVM linéaire | 0,900 | 0,910 | 0,963 | 0,973 | 0,9945 | 0,9953 | 0,790 |
@@ -147,66 +153,75 @@ C'est **exactement la ROC micro**. Choisir un seuil revient à arbitrer entre :
 | k plus proches voisins | 0,721 | 0,735 | 0,736 | 0,738 | 0,858 | 0,867 | 0,541 |
 | Référence | 0,000 | 0,023 | 0,033 | 0,041 | 0,500 | 0,510 | 0,005 |
 
-- **Le vrai utilisateur est parmi les 3 premières propositions dans 98,7 % des cas.** Les
+- **Le vrai utilisateur est parmi les 3 premières propositions dans 99,2 % des cas.** Les
   erreurs restantes sont donc « de justesse » : le bon utilisateur est presque toujours
   en deuxième ou troisième position.
 - **Les AUC sont toutes saturées** (> 0,99 sauf pour le k-NN). Elles classent les modèles
   dans le même ordre que le F1, mais avec des écarts minuscules. C'est la limite annoncée
   de la ROC en « un contre tous » très déséquilibré. La **précision moyenne** sépare mieux
   les modèles (0,79 pour le SVM contre 0,97 pour la forêt).
-- **Selon la métrique, le meilleur modèle n'est pas le même.** Les Extra-Trees ont la
-  meilleure accuracy et la meilleure précision moyenne : ils *classent* mieux en moyenne.
-  La forêt contrainte a le meilleur F1 macro : elle *décide* mieux pour les petits
-  utilisateurs. Notre critère étant le F1 macro, on garde la forêt.
+- **Le SVM sur séquences est en tête sur toutes les métriques**, décision comme
+  classement. Dans la première version (sans ce modèle), le meilleur modèle dépendait de
+  la métrique : les Extra-Trees avaient la meilleure accuracy, la forêt contrainte le
+  meilleur F1 macro. Le changement de représentation a donc plus apporté que le choix entre
+  modèles.
 
 ### Courbes ROC (fig11) et précision-rappel (fig14)
 
-- À **1 faux positif pour 10 000 paires** (10⁻⁴), la forêt contrainte retrouve **86,5 %**
-  des vraies paires (ROC micro), contre 84,2 % pour la forêt seule. La contrainte
-  navigateur décale donc la courbe vers le haut.
-- **Cas particulier du SVM** : sa ROC micro s'effondre aux faibles taux de faux positifs.
+- À **1 faux positif pour 10 000 paires** (10⁻⁴), le SVM sur séquences contraint retrouve
+  **93,2 %** des vraies paires (ROC micro), contre 92,7 % sans contrainte et 86,5 % pour la
+  forêt contrainte. La contrainte navigateur décale donc la courbe vers le haut.
+- **Cas particulier du SVM sur les features E8** : sa ROC micro s'effondre aux faibles
+  taux de faux positifs.
   Ses scores de décision ne sont **pas calibrés d'un utilisateur à l'autre** : un score de
   0,5 n'a pas le même sens pour deux utilisateurs différents. Or la ROC micro compare les
   scores de tous les utilisateurs entre eux. Sa ROC macro, qui traite chaque utilisateur
   séparément, est bien meilleure. Les probabilités des forêts et du MLP sont comparables
-  entre utilisateurs et n'ont pas ce problème.
+  entre utilisateurs et n'ont pas ce problème. Le SVM sur séquences a pourtant aussi des
+  scores non calibrés, mais il sépare si nettement les utilisateurs que sa ROC micro reste
+  la meilleure : l'effet existe, mais il est masqué.
 - **Les paliers de la ROC macro** en dessous de 10⁻³ viennent du faible nombre de
   négatifs par utilisateur (≈ 3 200) : on ne peut pas mesurer un taux de faux positifs plus
   fin que 1/3 200 ≈ 3·10⁻⁴.
 
 ### Lecture « détection d'intrusion » (modèle retenu)
 
-| Usurpations acceptées (faux positifs) | Sessions légitimes acceptées (rappel) | Seuil sur la probabilité |
+| Usurpations acceptées (faux positifs) | Sessions légitimes acceptées (rappel) | Seuil sur le score SVM |
 |---|---|---|
-| 0,1 % | **96,4 %** | 0,147 |
-| 1 % | **99,5 %** | 0,035 |
+| 0,1 % | **98,3 %** | −0,68 |
+| 1 % | **99,5 %** | −0,87 |
 
-Si l'on tolère qu'une tentative d'usurpation sur 1 000 passe, seules 3,6 % des vraies
-sessions déclencheraient une fausse alerte. Ce chiffre n'est qu'indicatif : de vraies
+Si l'on tolère qu'une tentative d'usurpation sur 1 000 passe, seules 1,7 % des vraies
+sessions déclencheraient une fausse alerte (3,6 % avec la forêt de la première version).
+Le seuil porte sur un score de décision et non sur une probabilité : il n'a de sens que
+pour ce modèle. Ce chiffre n'est qu'indicatif : de vraies
 usurpations, faites par quelqu'un qui *imite* l'utilisateur, seraient plus difficiles à
 détecter que des sessions d'autres testeurs qui ne cherchent pas à tromper le modèle.
 
 ### Diagnostic par utilisateur (fig12, fig13)
 
-- **141 utilisateurs sur 247 ont un F1 parfait (1,0)**, et seuls 2 sont sous 0,5 :
-  - `hll` : F1 0,11, 9 sessions ;
-  - `zok` : F1 0,47, 11 sessions.
-- **Le F1 ne dépend presque pas du nombre de sessions** : le F1 moyen vaut 0,93 pour les
-  utilisateurs à 4-6 sessions et entre 0,93 et 0,97 au-delà. L'équilibrage des classes
-  (`class_weight="balanced"`) a bien protégé les petits utilisateurs.
+- **153 utilisateurs sur 247 ont un F1 parfait (1,0)**, et **aucun** n'est sous 0,5. Les
+  moins bien reconnus sont `lra` (F1 0,60, 4 sessions), `hll` (0,71, 9 sessions) et `itt`
+  (0,75, 4 sessions). Avec la forêt, `hll` était à 0,11 et `zok` à 0,47.
+- **Le F1 dépend peu du nombre de sessions** : le F1 moyen vaut 0,96 pour les utilisateurs à
+  4-6 sessions et entre 0,97 et 0,98 au-delà. L'équilibrage des classes
+  (`class_weight="balanced"`) protège les petits utilisateurs.
 - **AUC et F1 ne désignent pas les mêmes utilisateurs difficiles.**
-  - `hll` a une AUC de 0,993 : ses sessions sont bien classées *près du haut*, mais
-    l'utilisateur `guh` passe juste devant (3 confusions `hll` → `guh`).
-  - À l'inverse, `zus` (AUC la plus basse, 0,956) a un F1 correct. Une de ses sessions
-    reçoit un score nul, ce qui crée un long palier sur sa ROC.
+  - `itt` a une AUC de 1,000 mais un F1 de 0,75 : ses sessions sont toujours classées
+    au-dessus de celles des autres *pour lui*, mais une de ses sessions a un autre
+    utilisateur juste devant.
+  - À l'inverse, `jkc` (AUC la plus basse, 0,950) a un F1 correct (0,80).
 
   L'AUC juge le *classement*, le F1 juge la *décision* : les deux se complètent.
-- **Confusions principales** :
-  - `flj` → `skm` (8) et `skm` ↔ `slq` (5 + 5) : ce sont trois des utilisateurs les plus
-    actifs, dont les boxplots de l'étape 2 montraient des profils proches (même vitesse,
-    part en mode modification très variable) ;
-  - `xkr` → `oqa` (6) ;
-  - `zok` → `sps` (5).
+- **Confusions principales** (79 couples, dont la plupart une seule fois) :
+  - `skm` ↔ `slq` (5 + 3) et `flj` → `skm` / `slq` (2 + 2) : ce sont trois des utilisateurs
+    les plus actifs, dont les boxplots de l'étape 2 montraient des profils proches (même
+    vitesse, part en mode modification très variable). Ce trio reste le principal point
+    faible, déjà présent avec la forêt ;
+  - `esu` ↔ `lgd` (2 + 2), `ald` → `fuy`, `xkr` → `oqa`, `gvp` → `hrj` (2 chacun).
+- **Les erreurs portent surtout sur des sessions courtes** : 130 actions en médiane pour
+  les sessions mal classées, contre 340 pour l'ensemble. Une session courte contient peu de
+  jetons caractéristiques.
 
   Il s'agit vraisemblablement de testeurs au périmètre similaire.
 
@@ -214,34 +229,35 @@ détecter que des sessions d'autres testeurs qui ne cherchent pas à tromper le 
 
 | Sessions d'entraînement | F1 macro entraînement | F1 macro validation |
 |---|---|---|
-| 614 | 1,00 | 0,626 |
-| 1 229 | 1,00 | 0,837 |
-| 1 844 | 1,00 | 0,919 |
-| 2 459 | 1,00 | 0,939 |
+| 614 | 1,00 | 0,723 |
+| 1 229 | 1,00 | 0,889 |
+| 1 844 | 1,00 | 0,946 |
+| 2 459 | 1,00 | 0,967 |
 
-- **Score d'entraînement de 1** : la forêt apprend parfaitement ses données d'entraînement.
-  C'est normal pour une forêt aléatoire (arbres complets). Elle généralise quand même grâce
-  au moyennage de 500 arbres construits sur des échantillons différents.
-- **Le score de validation monte encore entre 75 % et 100 % des données** (+0,02). **Plus de
+- **Score d'entraînement de 1** : avec 46 000 variables pour 2 459 sessions, le SVM peut
+  séparer parfaitement les sessions d'entraînement (il y a plus de dimensions que de
+  points). Il généralise quand même grâce à la régularisation (C = 0,3 : marge large plutôt
+  que zéro erreur à tout prix).
+- **Le score de validation monte encore entre 75 % et 100 % des données** (+0,02). Une
+  validation à 10 plis (90 % des données pour apprendre) le confirme : 0,974. **Plus de
   sessions par utilisateur amélioreraient le modèle** : c'est la limite principale, plus
   que le choix du modèle.
 
 ### Variables importantes (fig16)
 
-- **Importances très « plates »** : la première variable ne pèse que 0,7 % du total.
-  L'information est répartie sur des centaines de variables, sans « variable magique ».
-- **En tête** :
-  - des proportions d'actions (`part_action_Raccourci`, grille d'historique, retour sur un
-    écran, double-clic, toasts, filtrage) ;
-  - le navigateur ;
-  - une configuration (`conf=INSTALLATEUR`) ;
-  - quelques écrans (planning CRM) ;
-  - un enchaînement (`Exécution d'un bouton > Chainage`).
-
-  C'est cohérent avec l'étape 4 : les habitudes d'action dominent, et le contexte (écran,
-  configuration) affine.
-- **Biais de la mesure** : l'importance par impureté favorise les variables continues
-  (proportions) par rapport aux variables binaires ou rares. Il faut donc la lire avec
+- **Importances très « plates »** : la variable la plus importante ne pèse que 0,3 % du
+  total. L'information est répartie sur des dizaines de milliers de jetons.
+- **Par bloc** : les séquences d'actions complètes portent **71 %** de l'importance totale,
+  les jetons par famille 28 % et le navigateur 1 %. Le bloc ajouté dans cette version est
+  donc bien celui que le modèle utilise le plus.
+- **En tête, variable par variable** : les trois navigateurs (normal, chacun sépare un
+  groupe entier d'utilisateurs), puis des jetons par famille déjà repérés par l'étape 4 et
+  par la forêt (`conf=INSTALLATEUR`, `Lancement d'un tableau de bord`, `Raccourci`,
+  `Sélection d'un flag`, chaînes `GP`, `SV`, `EDI`, écran de planning). Les jetons de
+  séquences, eux, sont pris un par un trop rares pour apparaître dans les 20 premiers : leur
+  force vient de leur nombre.
+- **Biais de la mesure** : un poids moyen élevé ne dit pas *pour quels* utilisateurs la
+  variable compte, et deux jetons corrélés se partagent le poids. Il faut donc la lire avec
   prudence.
 
 ## 6. Limites et pistes d'amélioration
@@ -252,8 +268,8 @@ détecter que des sessions d'autres testeurs qui ne cherchent pas à tromper le 
 - **Choix d'un seuil de rejet** : pour un usage réel en détection d'intrusion, il faudrait
   fixer le seuil sur un jeu dédié et tester de vraies tentatives d'usurpation, et non des
   sessions d'autres testeurs.
-- **Importance par permutation** : la calculer sur les familles de variables (toutes les
-  parts d'actions, tous les écrans…) serait plus fiable que l'importance par impureté, et
-  moins coûteux qu'une permutation variable par variable.
-- **Exploiter le top-3 (98,7 %)** : un second modèle spécialisé pour départager les 2 ou 3
+- **Importance par permutation** : la calculer par bloc de variables (séquences, jetons par
+  famille, navigateur) serait plus fiable que les poids moyens, et moins coûteux qu'une
+  permutation variable par variable.
+- **Exploiter le top-3 (99,2 %)** : un second modèle spécialisé pour départager les 2 ou 3
   candidats les plus probables pourrait récupérer une partie des erreurs.

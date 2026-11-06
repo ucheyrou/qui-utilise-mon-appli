@@ -298,30 +298,42 @@ def tracer_courbe_apprentissage(modele, X: pd.DataFrame, y: pd.Series) -> pd.Dat
     return courbe
 
 
-def extraire_importances(modele) -> pd.Series | None:
-    """Importance (diminution moyenne d'impureté) des variables du modèle final.
+def extraire_importances(modele) -> tuple[pd.Series, str] | None:
+    """Importance des variables du modèle final.
+
+    - forêt : diminution moyenne d'impureté de Gini (feature_importances_) ;
+    - modèle linéaire (SVM) : moyenne, sur les utilisateurs, de la valeur
+      absolue du poids de la variable. Les variables étant des TF-IDF de même
+      échelle (et le navigateur en 0/1), les poids sont comparables entre eux.
 
     Renvoie
     -------
-    pd.Series | None
-        Importance par variable, triée ; None si le modèle n'en fournit pas.
+    tuple[pd.Series, str] | None
+        Importance par variable (triée) et libellé de la mesure ; None si le
+        modèle ne fournit ni l'un ni l'autre.
     """
     pipeline = modele.estimateur_ if isinstance(modele, ContrainteNavigateur) else modele
     classifieur = pipeline.named_steps["modele"]
-    if not hasattr(classifieur, "feature_importances_"):
+    if hasattr(classifieur, "feature_importances_"):
+        valeurs = classifieur.feature_importances_
+        mesure = "Importance (diminution moyenne de l'impureté de Gini)"
+    elif hasattr(classifieur, "coef_"):
+        valeurs = np.abs(classifieur.coef_).mean(axis=0)
+        mesure = "Importance (poids absolu moyen sur les utilisateurs)"
+    else:
         return None
     noms = pipeline.named_steps["preprocesseur"].get_feature_names_out()
-    return pd.Series(classifieur.feature_importances_, index=noms).sort_values(ascending=False)
+    return pd.Series(valeurs, index=noms).sort_values(ascending=False), mesure
 
 
-def tracer_importances(importances: pd.Series) -> None:
+def tracer_importances(importances: pd.Series, mesure: str) -> None:
     """Barres horizontales des variables les plus importantes du modèle final."""
     meilleures = importances.head(NB_VARIABLES_IMPORTANTES)
     libelles = [nom.split("__", 1)[1] for nom in meilleures.index]
     figure, axe = plt.subplots(figsize=(10, 6))
     axe.barh(libelles, meilleures.values, height=0.7, color=COULEUR_PRINCIPALE)
     axe.invert_yaxis()
-    axe.set_xlabel("Importance (diminution moyenne de l'impureté de Gini)")
+    axe.set_xlabel(mesure)
     axe.set_title(f"Les {NB_VARIABLES_IMPORTANTES} variables les plus importantes (modèle retenu)")
     axe.grid(axis="y", visible=False)
     axe.tick_params(axis="y", labelsize=7)
@@ -400,12 +412,13 @@ def main() -> None:
     print("\nCourbe d'apprentissage :")
     print(courbe.round(3).to_string(index=False))
 
-    importances = extraire_importances(final["modele"])
-    if importances is not None:
+    extraction = extraire_importances(final["modele"])
+    if extraction is not None:
+        importances, mesure = extraction
         importances.rename("importance").rename_axis("variable").reset_index().to_csv(
             DOSSIER_TABLEAUX / "importance_variables.csv", encoding=ENCODAGE, index=False
         )
-        tracer_importances(importances)
+        tracer_importances(importances, mesure)
         print("\nVariables les plus importantes :")
         print(importances.head(10).round(4).to_string())
 
