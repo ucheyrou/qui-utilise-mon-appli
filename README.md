@@ -69,6 +69,7 @@ jetons par famille et le TF-IDF des séquences d'actions complètes (action + é
 + chaîne, et leurs bigrammes), avec la contrainte « un utilisateur = un navigateur ».
 F1 macro en validation croisée stratifiée (4 plis) : **0,967 ± 0,011** ; accuracy 0,971 ;
 le vrai utilisateur est parmi les 3 premières propositions dans 99,2 % des cas.
+Score sur le classement public Kaggle : **0,988**.
 
 Première version (forêt aléatoire sur features simples + TF-IDF) : 0,943 en validation croisée,
 0,941 sur le classement public Kaggle.
