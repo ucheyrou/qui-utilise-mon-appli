@@ -60,8 +60,11 @@ sur Kaggle, en vérifiant qu'il respecte exactement le format attendu.
   différence de distribution entre train et test (ce que l'étape 2 laissait attendre).
 - **Version actuelle (SVM sur séquences + contrainte navigateur)** : validation croisée
   0,967 (4 plis), 0,974 (10 plis, plus proche du modèle final entraîné sur tout le train).
-  Score attendu : environ 0,97. La nouvelle soumission diffère de la première sur
-  12 sessions sur 324. Score Kaggle public : *à compléter après le dépôt*.
+  La nouvelle soumission diffère de la première sur 12 sessions sur 324. Score Kaggle
+  public : **0,988**, au-dessus de la validation croisée. Deux raisons : le modèle final
+  apprend sur 100 % du train (contre 75 % par pli, et la courbe d'apprentissage monte
+  encore), et le test est petit, donc bruité (voir le point suivant). 0,988 ne correspond
+  qu'à quelques erreurs.
 - **Ordre de grandeur du bruit** : le test ne compte que 324 sessions, et le classement
   public n'en utilise qu'une partie. Une seule erreur de plus ou de moins déplace le score
   d'environ 0,003 à 0,006 : des écarts de 0,01 entre deux soumissions ne sont pas
